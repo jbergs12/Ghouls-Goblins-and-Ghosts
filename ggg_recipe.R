@@ -3,8 +3,9 @@ ggg_recipe <- function(traindata){
     step_mutate_at(all_nominal_predictors(), fn = factor) |>
     step_lencode_glm(all_nominal_predictors(), outcome = vars(type)) |>
     #step_zv(all_predictors()) |> 
-    step_normalize(all_numeric_predictors()) #|>
+    step_range(all_numeric_predictors()) |>
   #step_pca(all_predictors(), threshold = .85)
+    step_smote(all_outcomes(), neighbors = 3)
 }
 
 run_cv <- function(wf, folds, grid, metric=metric_set(rmse), cores=8, parallel = TRUE){

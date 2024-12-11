@@ -1,6 +1,7 @@
 library(tidymodels)
 library(vroom)
 library(embed)
+library(themis)
 
 source("ggg_recipe.R")
 
@@ -10,7 +11,12 @@ ggg_test <- vroom("test.csv")
 
 ggg_rec <- ggg_recipe(ggg_train)
 
-
+# ggg_rec <- recipe(type~., data=ggg_train) |> 
+#   step_mutate_at(all_nominal_predictors(), fn = factor) |>
+#   step_dummy(color) |> 
+#   step_mutate(id, features = id) |> 
+#   step_range(all_predictors())
+  
 
 # ### KNN
 # 
@@ -56,93 +62,93 @@ ggg_rec <- ggg_recipe(ggg_train)
 
 ### Naive Bayes
 
-# library(naivebayes)
-# library(discrim)
-# 
-# ggg_nbayes <- naive_Bayes(Laplace = tune(),
-#                           smoothness = tune()) |>
-#   set_mode("classification") |>
-#   set_engine("naivebayes")
-# 
-# nbayes_wf <- workflow() |>
-#   add_recipe(ggg_rec) |>
-#   add_model(ggg_nbayes)
-# 
-# nbayes_grid <- grid_regular(
-#   Laplace(),
-#   smoothness(),
-#   levels = 5)
-# 
-# folds <- vfold_cv(ggg_train, v = 5, repeats = 1)
-# 
-# CV_results <- run_cv(nbayes_wf, folds, nbayes_grid, metric = metric_set(accuracy),
-#                      cores = 7)
-# 
-# bestTune <- CV_results |>
-#   select_best(metric = "accuracy")
-# 
-# bestTune$Laplace # 0
-# bestTune$smoothness # 1
-# 
-# final_wf <- nbayes_wf |>
-#   finalize_workflow(bestTune) |>
-#   fit(data=ggg_train)
-# 
-# nbayes_preds <- final_wf |>
-#   predict(new_data = ggg_test,
-#           type = "class")
-# 
-# kaggle_submission <- nbayes_preds |>
-#   bind_cols(ggg_test) |>
-#   select(id, .pred_class) |>
-#   rename(Id = id,
-#          type = .pred_class)
-# 
-# vroom_write(x=kaggle_submission, file="./results/nbayes.csv", delim = ",")
+library(naivebayes)
+library(discrim)
+
+ggg_nbayes <- naive_Bayes(Laplace = tune(),
+                          smoothness = tune()) |>
+  set_mode("classification") |>
+  set_engine("naivebayes")
+
+nbayes_wf <- workflow() |>
+  add_recipe(ggg_rec) |>
+  add_model(ggg_nbayes)
+
+nbayes_grid <- grid_regular(
+  Laplace(),
+  smoothness(),
+  levels = 20)
+
+folds <- vfold_cv(ggg_train, v = 10, repeats = 1)
+
+CV_results <- run_cv(nbayes_wf, folds, nbayes_grid, metric = metric_set(accuracy, roc_auc),
+                     cores = 7)
+
+bestTune <- CV_results |>
+  select_best(metric = "roc_auc")
+
+bestTune$Laplace # 0
+bestTune$smoothness # 1.5
+
+final_wf <- nbayes_wf |>
+  finalize_workflow(bestTune) |>
+  fit(data=ggg_train)
+
+nbayes_preds <- final_wf |>
+  predict(new_data = ggg_test,
+          type = "class")
+
+kaggle_submission <- nbayes_preds |>
+  bind_cols(ggg_test) |>
+  select(id, .pred_class) |>
+  rename(Id = id,
+         type = .pred_class)
+
+vroom_write(x=kaggle_submission, file="./results/nbayes2.csv", delim = ",")
 
 
 
-# ### rforest
-# 
+### rforest
+
 # library(ranger)
 # 
 # ggg_forest <- rand_forest(mtry = tune(),
 #                           min_n = tune(),
-#                           trees = 1000) |> 
-#   set_mode("classification") |> 
+#                           trees = 1000) |>
+#   set_mode("classification") |>
 #   set_engine("ranger")
 # 
 # forest_grid <- grid_regular(
-#   mtry(range = c(1, 50)),
+#   mtry(range = c(1, 6)),
 #   min_n(),
-#   levels = 5)
+#   levels = 10)
 # 
-# forest_wf <- workflow() |> 
-#   add_model(ggg_forest) |> 
+# forest_wf <- workflow() |>
+#   add_model(ggg_forest) |>
 #   add_recipe(ggg_rec)
 # 
 # folds <- vfold_cv(ggg_train, v = 10, repeats = 1)
 # 
 # CV_results <- run_cv(forest_wf, folds, forest_grid, metric = metric_set(accuracy),
-#                      cores = 8)
+#                      cores = 7)
 # 
-# bestTune <- CV_results |> 
+# bestTune <- CV_results |>
 #   select_best(metric = "accuracy")
 # 
-# bestTune$mtry
-# bestTune$min_n
+# bestTune$mtry # 44
+# bestTune$min_n # 18
 # 
-# final_wf <- forest_wf |> 
-#   finalize_workflow(bestTune) |> 
+# final_wf <- forest_wf |>
+#   finalize_workflow(bestTune) |>
 #   fit(data=ggg_train)
 # 
-# forest_preds <- final_wf |> 
+# forest_preds <- final_wf |>
 #   predict(new_data = ggg_test,
 #           type = "class")
 # 
-# kaggle_submission <- forest_preds |> 
-#   bind_cols(ggg_test) |> 
-#   select(id, .pred_class) |> 
+# kaggle_submission <- forest_preds |>
+#   bind_cols(ggg_test) |>
+#   select(id, .pred_class) |>
 #   rename(Id = id,
 #          type = .pred_class)
 # 
@@ -171,6 +177,10 @@ svmRadial <- svm_rbf(rbf_sigma=tune(), cost=tune()) %>% # set or tune
 svmRad_wf <- workflow() |>
   add_recipe(ggg_rec) |>
   add_model(svmRadial)
+
+# svmLin_wf <- workflow() |> 
+#   add_recipe(ggg_rec) |> 
+#   add_model(svmLinear)
 # 
 # svmPoly_grid <- grid_regular(
 #   degree(),
@@ -180,11 +190,11 @@ svmRad_wf <- workflow() |>
 svmRad_grid <- grid_regular(
   rbf_sigma(),
   cost(),
-  levels = 5)
+  levels = 15)
 # 
 # svmLin_grid <- grid_regular(
 #   cost(),
-#   levels = 5)
+#   levels = 10)
 # 
 folds <- vfold_cv(ggg_train, v = 10, repeats = 1)
 # 
@@ -194,8 +204,9 @@ CV_results <- run_cv(svmRad_wf, folds, svmRad_grid, metric = metric_set(accuracy
 bestTune <- CV_results |>
   select_best(metric = "accuracy")
 
-bestTune$rbf_sigma # 0.003162278
-bestTune$cost # 2.378414
+bestTune$rbf_sigma # 0.003162278 (the first from each are better)
+bestTune$cost # 2.378414 
+# 0.09921257 (for linear)
 
 final_wf <- svmRad_wf |>
   finalize_workflow(bestTune) |>
